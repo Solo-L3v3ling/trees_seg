@@ -2,7 +2,7 @@
 
 defaults:
   - _self_
-  - data: mnist # choose datamodule with `test_dataloader()` for evaluation
+  - data: trees # choose datamodule with `test_dataloader()` for evaluation
   - model: mnist
   - logger: null
   - trainer: default
@@ -15,4 +15,4 @@ task_name: "eval"
 tags: ["dev"]
 
 # passing checkpoint path is necessary for evaluation
-ckpt_path: ???
+ckpt_path: ??? # TODO: specify path to checkpoint
