@@ -1,4 +1,4 @@
-_target_: src.models.mnist_module.UNETLitModule
+_target_: src.models.unet_module.UNETLitModule
 
 optimizer:
   _target_: torch.optim.Adam

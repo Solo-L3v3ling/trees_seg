@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
-
+from torchsummary import summary
+import matplotlib.pyplot as plt
 
 class DoubleConv(nn.Module):
     """Double convolution block: (conv -> ReLU) × 2"""
@@ -81,3 +82,9 @@ if __name__ == "__main__":
     print(f"Input shape: {x.shape}")
     output = model(x)
     print(f"Output shape: {output.shape}")
+    print(model)
+    summary(model, (3, 240, 240))
+    plt.imshow(x.squeeze().permute( 1,2,0).detach().numpy())
+    plt.show()
+    plt.imshow(output.squeeze().detach().numpy())
+    plt.show()
