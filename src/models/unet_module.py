@@ -123,8 +123,8 @@ class UNETLitModule(LightningModule):
 
         # update and log metrics
         self.val_loss(loss)
-        self.val_iou(preds, targets)
-        self.val_ap(preds, targets)
+        self.val_iou(preds.unsqueeze(1), targets)
+        self.val_ap(preds.unsqueeze(1), targets)
         self.log("val/loss", self.val_loss, on_step=False, on_epoch=True, prog_bar=True)
         self.log("val/iou", self.val_iou, on_step=False, on_epoch=True, prog_bar=True)
         self.log("val/ap", self.val_ap, on_step=False, on_epoch=True, prog_bar=True)

@@ -1,6 +1,8 @@
+from cProfile import label
 import os
 import shutil
 from typing import Any, Dict, Optional, Tuple
+from matplotlib import image
 import torch
 from lightning import LightningDataModule
 from torch.utils.data import ConcatDataset, DataLoader, Dataset, random_split
@@ -8,7 +10,6 @@ import torchvision.transforms.v2 as transforms
 from torchvision.datasets import CocoDetection
 from src.data.components.trees_dataset import TreesDataset
 from src.utils.helpers import download_dataset_from_kaggle
-
 
 class TreesDataModule(LightningDataModule):
     """
@@ -20,7 +21,7 @@ class TreesDataModule(LightningDataModule):
             self,
             data_dir: str = "data/",
             sub_dataset: str = "trees",
-            kaggle_dataset: Optional[str] = None,
+            kaggle_datase_url: Optional[str] = None,
             train_val_test_split: Tuple[int, int, int] = (55_000, 5_000, 10_000),
             batch_size: int = 64,
             num_workers: int = 0,
@@ -43,6 +44,24 @@ class TreesDataModule(LightningDataModule):
         # data transformations
         self.transforms = transforms.Compose(
             [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
+        )
+        self.train_transforms = transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.RandomHorizontalFlip(),
+                transforms.RandomVerticalFlip(),
+                transforms.RandomRotation(30),
+                transforms.Resize((256, 256)),
+
+                transforms.Normalize((0.1307,), (0.3081,)),
+            ]
+        )
+        self.val_transforms = transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.Resize((256, 256)),
+                transforms.Normalize((0.1307,), (0.3081,)),
+            ]
         )
 
         self.dataset_path = f"{data_dir}/{sub_dataset}"
@@ -70,8 +89,10 @@ class TreesDataModule(LightningDataModule):
 
         Do not use it to assign state (self.x = y).
         """
-        if self.hparams.kaggle_dataset is not None and not os.path.exists(self.hparams.data_dir):
-            path = download_dataset_from_kaggle(self.hparams.kaggle_dataset)
+        print("Preparing data...")
+    
+        if self.hparams.kaggle_datase_url is not None and not os.path.exists(self.hparams.data_dir):
+            path = download_dataset_from_kaggle(self.hparams.kaggle_datase_url)
 
             # Move the downloaded dataset to the data directory.
             shutil.move(path, self.dataset_path)
@@ -100,15 +121,21 @@ class TreesDataModule(LightningDataModule):
 
             TREES_DATASET_DIR = self.dataset_path
 
-            train_data = CocoDetection(root = TREES_DATASET_DIR + '/train/images', annFile = TREES_DATASET_DIR + '/train/images/_annotations.coco.json', transform = self.transforms)
-            test_data = CocoDetection(root = TREES_DATASET_DIR + '/test/images', annFile = TREES_DATASET_DIR + '/test/images/_annotations.coco.json', transform = None)
-            valid_data = CocoDetection(root = TREES_DATASET_DIR + '/valid/images', annFile = TREES_DATASET_DIR + '/valid/images/_annotations.coco.json', transform = None)
+            train_data = CocoDetection(root = TREES_DATASET_DIR + 'train/', annFile = TREES_DATASET_DIR + 'train/sem_annotations.coco.json')#, transform = self.train_transforms)
+            test_data = CocoDetection(root = TREES_DATASET_DIR + 'test/', annFile = TREES_DATASET_DIR + 'test/sem_annotations.coco.json')#, transform = self.val_transforms)
+            valid_data = CocoDetection(root = TREES_DATASET_DIR + 'valid/', annFile = TREES_DATASET_DIR + 'valid/sem_annotations.coco.json')#, transform = self.val_transforms)
 
-            trainset = TreesDataset(dataset=train_data)
-            testset = TreesDataset(dataset=test_data)
-            validset = TreesDataset(dataset=valid_data)
+            trainset = TreesDataset(dataset=train_data, transform=self.train_transforms)
+            testset = TreesDataset(dataset=test_data, transform=self.val_transforms)
+            validset = TreesDataset(dataset=valid_data, transform=self.val_transforms)
+            # print(f"Trainset size: {len(trainset)}")
+            # print(f"Testset size: {len(testset)}")
+            # print(f"Validset size: {len(validset)}")
+            # print(self.hparams.train_val_test_split)
+            # Check for segmentation annotations
 
             dataset = ConcatDataset(datasets=[trainset, testset, validset])
+            print(f"Dataset size: {len(dataset)}")
             self.data_train, self.data_val, self.data_test = random_split(
                 dataset=dataset,
                 lengths=self.hparams.train_val_test_split,
@@ -116,6 +143,8 @@ class TreesDataModule(LightningDataModule):
             )
 
             self.label2id, self.id2label = trainset.label_id_map()
+
+
 
     def train_dataloader(self) -> DataLoader[Any]:
         """Create and return the train dataloader.
@@ -125,6 +154,7 @@ class TreesDataModule(LightningDataModule):
         return DataLoader(
             dataset=self.data_train,
             batch_size=self.batch_size_per_device,
+            collate_fn=collate_fn,
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
             shuffle=True,
@@ -138,6 +168,7 @@ class TreesDataModule(LightningDataModule):
         return DataLoader(
             dataset=self.data_val,
             batch_size=self.batch_size_per_device,
+            collate_fn=collate_fn,
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
             shuffle=False,
@@ -150,6 +181,7 @@ class TreesDataModule(LightningDataModule):
         """
         return DataLoader(
             dataset=self.data_test,
+            collate_fn=collate_fn,
             batch_size=self.batch_size_per_device,
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
@@ -181,5 +213,23 @@ class TreesDataModule(LightningDataModule):
         pass
 
 
+def  collate_fn(batch):
+    """Custom collate function to handle variable length sequences.
+
+    :param batch: A batch of data.
+    :return: A batch of data with variable length sequences handled.
+    """
+    print("Collate function called")
+    images = [torch.tensor(item[0]) for item in batch]
+    labels = [torch.tensor(item[1]) for item in batch]
+    print(images[0].shape)
+    print(labels[0].shape)
+    print(len(images))
+    print(len(labels))
+    images = torch.stack(images, dim=0)
+    labels = torch.stack(labels, dim=0)
+    print(images.shape)
+    print(labels.shape)
+    return images, labels
 if __name__ == "__main__":
     _ = TreesDataModule()
